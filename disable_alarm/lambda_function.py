@@ -1,26 +1,74 @@
-import json
 import boto3
+import os
+import logging
 cw_client = boto3.client('cloudwatch')
+IS_INFO_LOG_ENABLED = os.environ.get('IS_INFO_LOG_ENABLED')
 
-def get_target_instance_id(target_group_arn):
-    elbv2_client = boto3.client('elbv2')
+if IS_INFO_LOG_ENABLED == "True":
+    logging.getLogger().setLevel(logging.INFO)
+
+def find_instance_id_from_ip(ec2_client, target_id):
+    ec2_response = ec2_client.describe_instances(
+        Filters=[
+            {
+                "Name": "network-interface.addresses.private-ip-address",
+                "Values": [target_id]
+            }
+        ]
+    )
+    instance_id = "N/A"
+    logging.info(f"ec2 response {ec2_response}")
+    for item in ec2_response.get('Reservations',[]):
+        for instance in item.get('Instances',[]):
+            instance_id = instance.get('InstanceId')
+    while 'NextToken' in ec2_response:
+        ec2_response = ec2_client.describe_instances(
+            Filters=[
+                {
+                    "Name": "network-interface.addresses.private-ip-address",
+                    "Values": [target_id]
+                }
+            ],
+            NextToken = ec2_response.get('NextToken')
+        )   
+        for item in ec2_response.get('Reservations'):
+            for instance in item.get('Instances',[]):
+                instance_id = instance.get('InstanceId')
+    logging.info(f"instanceID: {instance_id}")
+    return instance_id
+
+def get_target_instance_id(elbv2_client, ec2_client, target_group_arn):
     target_group_response = elbv2_client.describe_target_health(TargetGroupArn = target_group_arn)
     instance_id_list = []
+    logging.info(f"target group response: {target_group_response}")
     for target in target_group_response.get('TargetHealthDescriptions',[]):
-        instance_id_list.append(target.get('Target',{}).get('Id'))
+        target_id = target.get('Target',{}).get('Id')
+        instance_id = target_id
+        if not target_id.startswith('i-'):
+            instance_id = find_instance_id_from_ip(ec2_client, target_id)
+        instance_id_list.append(instance_id)
     return instance_id_list
     
 def get_cloud_watch_alarm(region,account_id):
+    elbv2_client = boto3.client('elbv2')
+    ec2_client = boto3.client('ec2')
     cw_response_obj = cw_client.describe_alarms()
     cw_response_list = cw_response_obj.get('MetricAlarms',[])
     cw_alarm_dict_list = []
-        
+
+    while 'NextToken' in cw_response_obj:
+        cw_response_obj = cw_client.describe_alarms({
+            'NextToken': cw_response_obj.get('NextToken','N/A')
+        })
+        cw_response_list += cw_response_obj.get('MetricAlarms',[])
+    logging.info(f"All Cloudwatch alarm list: {cw_response_list}")
     lb_cw_alarm_list = [alarm for alarm in cw_response_list if "Load Balancer Status" in alarm.get('AlarmName','')]
+    logging.info(f"LoadBalancer Cloudwatch alarm: {lb_cw_alarm_list}")
     for lb_cw_alarm in lb_cw_alarm_list:
         for dimension in lb_cw_alarm.get('Dimensions',[]):
             if dimension.get('Name') == 'TargetGroup':
                 target_value = dimension.get('Value')
-                instance_id_list = get_target_instance_id(f'arn:aws:elasticloadbalancing:{region}:{account_id}:{target_value}')
+                instance_id_list = get_target_instance_id(elbv2_client, ec2_client, f'arn:aws:elasticloadbalancing:{region}:{account_id}:{target_value}')
                 cw_alarm_dict_list.append({
                     "cw_alarm_name": lb_cw_alarm.get('AlarmName'),
                     "target_instance_id_list": instance_id_list
@@ -38,18 +86,16 @@ def get_ec2_change_state_status_dict(records):
         region = account_region_list[1]
         
         new_img = ddb.get("NewImage")
-        old_img = ddb.get("OldImage")
+        # old_img = ddb.get("OldImage")
         
         new_img_ec2 = dict(filter(lambda item: item[0].startswith("i-"), new_img.items()))
-        old_img_ec2 = dict(filter(lambda item: item[0].startswith("i-"), old_img.items()))
+        # old_img_ec2 = dict(filter(lambda item: item[0].startswith("i-"), old_img.items()))
 
         for instance_id, state in new_img_ec2.items():
-            if state == old_img_ec2.get(instance_id):
-                continue
             change_state_ec2.update({
                 instance_id: {
                     "new_state": state.get('S'),
-                    "old_state": old_img_ec2.get(instance_id).get('S')
+                    # "old_state": old_img_ec2.get(instance_id).get('S')
                 }
             })
     return change_state_ec2, region, account_id
@@ -68,10 +114,26 @@ def enable_or_disable_cw_alarm_list(change_state_ec2, cw_alarm_dict_list):
 
 def lambda_handler(event, context):
     # TODO implement
-    records = event.get('Records')
-    change_state_ec2, region, account_id = get_ec2_change_state_status_dict(records)
-    cw_alarm_dict_list = get_cloud_watch_alarm(region, account_id)
-    enable_cw_alarm_list, disable_cw_alarm_list = enable_or_disable_cw_alarm_list(change_state_ec2, cw_alarm_dict_list)
-    cw_client.disable_alarm_actions(AlarmNames=disable_cw_alarm_list)
-    cw_client.enable_alarm_actions(AlarmNames=enable_cw_alarm_list)
-    
+    try:
+        logging.info(event)
+        records = event.get('Records')
+
+        change_state_ec2, region, account_id = get_ec2_change_state_status_dict(records)
+        logging.info('change state ec2:')
+        logging.info(change_state_ec2)
+
+        cw_alarm_dict_list = get_cloud_watch_alarm(region, account_id)
+        logging.info('cw alarm dict list')
+        logging.info(cw_alarm_dict_list)
+
+        enable_cw_alarm_list, disable_cw_alarm_list = enable_or_disable_cw_alarm_list(change_state_ec2, cw_alarm_dict_list)
+        logging.info('enable cw alarm list: ')
+        logging.info(enable_cw_alarm_list)
+        logging.info('disable cw alarm list: ')
+        logging.info(disable_cw_alarm_list)
+        
+        cw_client.disable_alarm_actions(AlarmNames=disable_cw_alarm_list)
+        cw_client.enable_alarm_actions(AlarmNames=enable_cw_alarm_list)
+    except Exception as ex:
+        logging.warning(str(ex))
+        
