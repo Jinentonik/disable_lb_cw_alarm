@@ -1,0 +1,135 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: CloudFormation Template for AWS Lambda Function Deployment
+
+Parameters:
+  S3BucketLambdaCode:
+    Type: String
+    Description: S3 bucket for cloudformation files
+  S3KeyLambdaCode:
+    Type: String
+    Description: S3 keys for cloudformation files
+  DynamodbTableName:
+    Type: String
+    Description: The name of the dynamodb Instance Scheduler State table.
+  Region: 
+    Type: String
+    Description: The region of your deployment.
+  AWSAccountId:
+    Type: String
+    Description: The AWS Account Id of your deployment.\
+  DDBStreamArn:
+    Type: String
+    Description: The Dynamodb Stream ARN. 
+
+Resources:
+  DisableAlarmFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: lmd-disable-alarm
+      Handler: lambda_function.lambda_handler
+      MemorySize: 128
+      Role: !GetAtt IAMRoleDisableAlarm.Arn
+      Timeout: 30 
+      Code:
+        S3Bucket: !Ref S3BucketLambdaCode 
+        S3Key: !Ref S3KeyLambdaCode 
+      Runtime: python3.11
+
+  IAMRoleDisableAlarm:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: iamr-disable-alarm
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+
+  IAMPolicyLambdaCloudWatch:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: iamp-lambda-cloudwatch
+      Roles:
+        - !Ref IAMRoleDisableAlarm
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: VisualEditor0
+            Effect: Allow
+            Action:
+              - cloudwatch:DescribeAlarmHistory
+              - cloudwatch:GetDashboard
+              - cloudwatch:GetInsightRuleReport
+              - cloudwatch:ListTagsForResource
+              - cloudwatch:DescribeAlarms
+              - cloudwatch:GetMetricStream
+              - cloudwatch:SetAlarmState
+              - cloudwatch:DisableAlarmActions
+              - cloudwatch:EnableAlarmActions
+            Resource: !Sub arn:aws:cloudwatch:*:${AWSAccountId}:alarm:*
+
+          - Sid: VisualEditor1
+            Effect: Allow
+            Action:
+              - cloudwatch:DescribeInsightRules
+              - cloudwatch:GetMetricData
+              - cloudwatch:ListMetricStreams
+              - cloudwatch:DescribeAlarmsForMetric
+              - cloudwatch:ListDashboards
+              - cloudwatch:GetMetricStatistics
+              - cloudwatch:GetMetricWidgetImage
+              - cloudwatch:ListManagedInsightRules
+              - cloudwatch:ListMetrics
+              - cloudwatch:DescribeAnomalyDetectors
+            Resource: '*'
+
+          - Sid: VisualEditor2
+            Effect: Allow
+            Action:
+              - logs:DescribeLogGroups
+              - logs:DescribeLogStreams
+              - logs:CreateLogDelivery
+              - logs:CreateLogGroup
+              - logs:CreateLogStream
+              - logs:PutLogEvents
+              - logs:PutDestinationPolicy
+              - logs:PutDestination
+              - logs:UpdateLogDelivery
+              - elasticloadbalancing:DescribeTargetHealth
+            Resource: '*'
+
+          - Sid: VisualEditor3
+            Effect: Allow
+            Action:
+              - kms:Decrypt
+            Resource: '*'
+
+  IAMPolicyLambdaDynamoDB:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: iamp-lambda-dynamodb
+      Roles:
+        - !Ref IAMRoleDisableAlarm
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: VisualEditor0
+            Effect: Allow
+            Action:
+              - dynamodb:GetShardIterator
+              - dynamodb:DescribeStream
+              - dynamodb:GetRecords
+            Resource: !Sub 'arn:aws:dynamodb:${Region}:${AWSAccountId}:table/${DynamodbTableName}/stream/*'
+          - Sid: VisualEditor1
+            Effect: Allow
+            Action: dynamodb:ListStreams
+            Resource: '*'
+  InstanceSchedulerStateTableStreamEventSource:
+    Type: AWS::Lambda::EventSourceMapping
+    Properties:
+      BatchSize: 1  # Adjust the batch size as needed.
+      EventSourceArn: !Ref DDBStreamArn
+      FunctionName: !GetAtt DisableAlarmFunction.Arn
+      StartingPosition: LATEST

@@ -1,0 +1,9 @@
+get instance id from old image and new image
+if new state and old state are the same then skip because alarm status won't change
+
+Get cloudwatch alarm
+filter for AWS-Load Balancer
+Find the target group arn from cloudwatch alarm
+Use describe target group health to get instance id associated with the target group.
+If the instance id of the target group associated with the load balancer is the same as the one in the list
+then enable or disbale the cloudwatch alarm

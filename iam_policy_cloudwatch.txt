@@ -1,0 +1,67 @@
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Sid": "VisualEditor0",
+            "Effect": "Allow",
+            "Action": [
+                "cloudwatch:DescribeAlarmHistory",
+                "cloudwatch:GetDashboard",
+                "cloudwatch:GetInsightRuleReport",
+                "cloudwatch:ListTagsForResource",
+                "cloudwatch:DescribeAlarms",
+                "cloudwatch:GetMetricStream",
+                "cloudwatch:SetAlarmState",
+                "cloudwatch:DisableAlarmActions",
+                "cloudwatch:EnableAlarmActions"
+            ],
+            "Resource": "arn:aws:cloudwatch:*:088985084901:alarm:*"
+        },
+        {
+            "Sid": "VisualEditor1",
+            "Effect": "Allow",
+            "Action": [
+                "cloudwatch:DescribeInsightRules",
+                "cloudwatch:GetMetricData",
+                "cloudwatch:ListMetricStreams",
+                "cloudwatch:DescribeAlarmsForMetric",
+                "cloudwatch:ListDashboards",
+                "cloudwatch:GetMetricStatistics",
+                "cloudwatch:GetMetricWidgetImage",
+                "cloudwatch:ListManagedInsightRules",
+                "cloudwatch:ListMetrics",
+                "cloudwatch:DescribeAnomalyDetectors"
+            ],
+            "Resource": "*"
+        },
+        {
+            "Sid": "VisualEditor2",
+            "Effect": "Allow",
+            "Action": [
+                "logs:DescribeLogGroups",
+                "logs:DescribeLogStreams",
+                "logs:CreateLogDelivery",
+                "logs:CreateLogGroup",
+                "logs:CreateLogStream",
+                "logs:PutLogEvents",
+                "logs:PutDestinationPolicy",
+                "logs:PutDestination",
+                "logs:UpdateLogDelivery",
+                "elasticloadbalancing:DescribeTargetHealth"
+            ],
+            "Resource": [
+                "*"
+            ]
+        },
+        {
+            "Sid": "VisualEditor3",
+            "Effect": "Allow",
+            "Action": [
+                "kms:Decrypt"
+            ],
+            "Resource": [
+                "*"
+            ]
+        }
+    ]
+}
