@@ -34,6 +34,9 @@ Resources:
         S3Bucket: !Ref S3BucketLambdaCode 
         S3Key: !Ref S3KeyLambdaCode 
       Runtime: python3.11
+      Environment:
+        Variables:
+          IS_INFO_LOG_ENABLED: False
 
   IAMRoleDisableAlarm:
     Type: AWS::IAM::Role
@@ -104,6 +107,11 @@ Resources:
             Effect: Allow
             Action:
               - kms:Decrypt
+            Resource: '*'
+          - Sid: AllowDescribeEc2
+            Effect: Allow
+            Action:
+              - ec2:DescribeInstances
             Resource: '*'
 
   IAMPolicyLambdaDynamoDB:
