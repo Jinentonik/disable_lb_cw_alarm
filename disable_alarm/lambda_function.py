@@ -57,14 +57,12 @@ def get_cloud_watch_alarm(region,account_id):
     cw_alarm_dict_list = []
 
     while 'NextToken' in cw_response_obj:
-        cw_response_obj = cw_client.describe_alarms({
-            'NextToken': cw_response_obj.get('NextToken','N/A')
-        })
+        cw_response_obj = cw_client.describe_alarms(
+            NextToken = cw_response_obj.get('NextToken','N/A')
+        )
         cw_response_list += cw_response_obj.get('MetricAlarms',[])
     logging.info(f"All Cloudwatch alarm list: {cw_response_list}")
-    lb_cw_alarm_list = [alarm for alarm in cw_response_list if "Load Balancer Status" in alarm.get('AlarmName','')]
-    logging.info(f"LoadBalancer Cloudwatch alarm: {lb_cw_alarm_list}")
-    for lb_cw_alarm in lb_cw_alarm_list:
+    for lb_cw_alarm in cw_response_list:
         for dimension in lb_cw_alarm.get('Dimensions',[]):
             if dimension.get('Name') == 'TargetGroup':
                 target_value = dimension.get('Value')
@@ -72,6 +70,12 @@ def get_cloud_watch_alarm(region,account_id):
                 cw_alarm_dict_list.append({
                     "cw_alarm_name": lb_cw_alarm.get('AlarmName'),
                     "target_instance_id_list": instance_id_list
+                })
+            elif dimension.get('Name') == 'InstanceId':
+                instance_id = dimension.get('Value')
+                cw_alarm_dict_list.append({
+                    "cw_alarm_name": lb_cw_alarm.get('AlarmName'),
+                    "target_instance_id_list": [instance_id]
                 })
     return cw_alarm_dict_list
 
