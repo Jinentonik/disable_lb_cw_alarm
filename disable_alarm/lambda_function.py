@@ -107,13 +107,22 @@ def get_ec2_change_state_status_dict(records):
 def enable_or_disable_cw_alarm_list(change_state_ec2, cw_alarm_dict_list):
     disable_cw_alarm_list = []
     enable_cw_alarm_list = []
-    for instance_id in change_state_ec2.keys():
-        for alarm in cw_alarm_dict_list:
-            if instance_id in alarm.get('target_instance_id_list'):
-                if change_state_ec2.get(instance_id, {}).get('new_state') == "stopped":
-                    disable_cw_alarm_list.append(alarm.get('cw_alarm_name'))
-                else:
-                    enable_cw_alarm_list.append(alarm.get('cw_alarm_name'))
+    for alarm in cw_alarm_dict_list:
+        stopped_instance_list = []
+        for instance_id in alarm.get('target_instance_id_list'):
+            if change_state_ec2.get(instance_id, {}).get('new_state') == "stopped":
+                stopped_instance_list.append(instance_id)
+        
+        if "Load Balancer Status: All Instances Down" in alarm.get('cw_alarm_name'):
+            if stopped_instance_list == alarm.get('target_instance_id_list'):
+                disable_cw_alarm_list.append(alarm.get('cw_alarm_name'))
+            else:
+                enable_cw_alarm_list.append(alarm.get('cw_alarm_name'))
+        elif len(stopped_instance_list) > 0:
+            disable_cw_alarm_list.append(alarm.get('cw_alarm_name'))
+        else:
+            enable_cw_alarm_list.append(alarm.get('cw_alarm_name'))
+        
     return enable_cw_alarm_list, disable_cw_alarm_list
 
 def lambda_handler(event, context):
